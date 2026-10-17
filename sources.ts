@@ -112,11 +112,56 @@ function firstLink(line: string): { title: string; url: string; end: number; bar
   return { title: plainText(match[1]), url, end: end + 1 };
 }
 
+// Distilled entries written since October 2026 use a bold title and labelled
+// sub-bullets instead of a leading link:
+//   - **Title** — what it is
+//   - **Evidence:** [label](https://primary.source)
+//   - **Discovery:** [X source #1](https://x.com/…). Reviewed …
+// Each block becomes one record whose URL is its first evidence link, falling
+// back to the first discovery link.
+const DISTILLED_TITLE = /^\s*[-*]\s+\*\*([^*]+?)\*\*\s*[—–-]\s*(.+)$/;
+const DISTILLED_FIELD = /^\s*[-*]\s+\*\*([^*:]+(?:\s+\d{4}-\d{2}-\d{2})?):\*\*\s*(.*)$/;
+function distilledEntries(content: string): { title: string; annotation: string; url: string; markdown: string }[] {
+  const out: { title: string; annotation: string; url: string; markdown: string }[] = [];
+  let current: { title: string; annotation: string; lines: string[]; evidence: string[]; discovery: string[] } | null = null;
+  const firstUrl = (text: string) => [...text.matchAll(/\]\((https?:\/\/[^)\s]+)\)|(https?:\/\/[^\s)>\]]+)/g)].map(m => m[1] || m[2])[0];
+  const flush = () => {
+    if (!current) return;
+    const url = current.evidence.map(firstUrl).find(Boolean) || current.discovery.map(firstUrl).find(Boolean);
+    if (url) out.push({ title: plainText(current.title), annotation: plainText(current.annotation), url, markdown: current.lines.join("\n") });
+    current = null;
+  };
+  for (const line of content.split(/\r?\n/)) {
+    const field = line.match(DISTILLED_FIELD);
+    const title = !field && line.match(DISTILLED_TITLE);
+    if (title) { flush(); current = { title: title[1], annotation: title[2], lines: [line.replace(/^\s*[-*]\s+/, "")], evidence: [], discovery: [] }; continue; }
+    if (field && current) {
+      current.lines.push(line.replace(/^\s*[-*]\s+/, ""));
+      const label = field[1].toLowerCase();
+      if (label.startsWith("evidence")) current.evidence.push(field[2]);
+      else if (label.startsWith("discovery") || label.startsWith("follow-up")) current.discovery.push(field[2]);
+      continue;
+    }
+    if (/^\s*#/.test(line) || (/^\s*[-*]\s+\[/.test(line))) flush();
+  }
+  flush();
+  return out;
+}
+
 export function buildBookmarks(sources: RawSource[]): Bookmark[] {
   const bookmarks: Bookmark[] = [], seen = new Map<string, number>();
   for (const source of latestSources(sources)) {
     if (!source.logicalPath.startsWith("bookmarks/") || /^index$/i.test(source.title)) continue;
+    const push = (title: string, url: string, annotation: string, markdown: string) => {
+      const key = digest(source.logicalPath + "\0" + url).slice(0, 20), occurrence = seen.get(key) || 0;
+      seen.set(key, occurrence + 1);
+      bookmarks.push({ id: occurrence ? `${key}-${occurrence}` : key, title, url, annotation, markdown,
+        category: source.title, domain: domains[source.title] || "personal", sourceId: source.id, sourcePath: source.path,
+        capturedAt: source.capturedAt,
+        identifiers: [...markdown.matchAll(/(?:x|twitter)\.com\/[^/\s]+\/status\/(\d+)/g)].map(m => m[1]) });
+    };
     for (const line of source.content.split(/\r?\n/)) {
+      if (DISTILLED_FIELD.test(line)) continue; // already part of a distilled entry
       const link = firstLink(line);
       if (!link) continue;
       const key = digest(source.logicalPath + "\0" + link.url).slice(0, 20), occurrence = seen.get(key) || 0;
@@ -127,6 +172,8 @@ export function buildBookmarks(sources: RawSource[]): Bookmark[] {
         capturedAt: source.capturedAt,
         identifiers: [...line.matchAll(/(?:x|twitter)\.com\/[^/\s]+\/status\/(\d+)/g)].map(m => m[1]) });
     }
+    // After the one-line entries, so adding a distilled entry never changes an existing record's ID.
+    for (const entry of distilledEntries(source.content)) push(entry.title, entry.url, entry.annotation, entry.markdown);
   }
   return bookmarks;
 }

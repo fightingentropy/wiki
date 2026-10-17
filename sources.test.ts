@@ -79,3 +79,25 @@ test('one-step graph scope does not cascade through edge order or catalog hubs',
  expect(graphNeighborhood(nodes,[...edges].reverse(),{focus:'a',hops:1}).nodes.map(n=>n.id)).toEqual(['a','b']);
  expect(graphNeighborhood(nodes,edges,{focus:'a',hops:2}).nodes.map(n=>n.id)).toEqual(['a','b','c']);
 });
+
+test('bookmark parsing reads distilled bold-title entries without changing existing IDs',()=>{
+ const base='- [Old](https://example.org/old) — Existing entry';
+ const distilled=['## Useful X bookmarks distilled — 2026-10-11',
+  '- **ipatool for App Store metadata** — Search, version metadata and package downloads.',
+  '- **Possible use:** Reference for iOS tooling.',
+  '- **Evidence:** [official repository](https://github.com/majd/ipatool)',
+  '- **Discovery:** [X source #11](https://x.com/dev_majd/status/2108675420426031455). Reviewed 2026-10-11.',
+  '- **Paper-first tutoring** — Work on paper first.',
+  '- **Evidence:** Source workflow anecdote.',
+  '- **Discovery:** [X source #38](https://x.com/IterIntellectus/status/2108956765153075200). Reviewed 2026-10-11.'].join('\n');
+ const source:any={id:'source',path:'bookmarks/Tools.md',logicalPath:'bookmarks/Tools.md',title:'Tools',capturedAt:null,content:base};
+ const before=buildBookmarks([source]);
+ const after=buildBookmarks([{...source,content:base+'\n\n'+distilled}]);
+ expect(after).toHaveLength(3);
+ expect(after[0].id).toBe(before[0].id);
+ expect(after[1].title).toBe('ipatool for App Store metadata');
+ expect(after[1].url).toBe('https://github.com/majd/ipatool');
+ expect(after[1].annotation).toBe('Search, version metadata and package downloads.');
+ expect(after[1].identifiers).toEqual(['2108675420426031455']);
+ expect(after[2].url).toBe('https://x.com/IterIntellectus/status/2108956765153075200');
+});

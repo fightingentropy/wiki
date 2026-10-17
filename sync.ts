@@ -38,7 +38,10 @@ async function inventory(root: string, prefix = ""): Promise<string[]> {
   return files;
 }
 let running = false;
-export async function sync(options: { brainPath?: string; rawDir?: string; folders?: Record<string, string>; preview?: boolean } = {}): Promise<SyncResult> {
+// Markdown notes kept directly in the vault root (for example BRIEF.md) are
+// captured under this raw folder; subfolders are handled by SYNC_MAP.
+const ROOT_TARGET = "root";
+export async function sync(options: { brainPath?: string; rawDir?: string; folders?: Record<string, string>; rootTarget?: string | false; preview?: boolean } = {}): Promise<SyncResult> {
   if (running) throw new Error("A source capture is already running");
   running = true;
   try {
@@ -46,28 +49,36 @@ export async function sync(options: { brainPath?: string; rawDir?: string; folde
     const status = await readCaptureStatus(raw);
     const result: SyncResult = { synced: [], errors: [], deleted: 0, backupDir: null, changes: [], capturedAt: status.lastCapturedAt };
     const stamp = Math.max(Date.now(), (Date.parse(status.lastCapturedAt || '') || 0) + 1), capturedAt = new Date(stamp).toISOString();
+    const capture = async (sourceFile: string, logical: string) => {
+      const content = await readFile(sourceFile);
+      const sha256 = digest(content);
+      const currentPath = status.files[logical]?.path || logical;
+      let current: Buffer | null = null;
+      try { current = await readFile(join(raw, currentPath)); } catch (e: any) { if (e.code !== "ENOENT") throw e; }
+      if (current && digest(current) === sha256) return;
+      const baselineExists = await stat(join(raw, logical)).then(() => true, e => { if (e.code === "ENOENT") return false; throw e; });
+      const destination = `snapshots/${stamp}-${sha256.slice(0, 12)}/${logical}`;
+      if (!options.preview) {
+        await mkdir(dirname(join(raw, destination)), { recursive: true });
+        await writeFile(join(raw, destination), content, { flag: "wx" });
+        status.files[logical] = { path: destination, sha256, capturedAt };
+      }
+      result.changes.push({ source: logical, destination, kind: current || baselineExists ? "revision" : "new", sha256 });
+    };
     for (const [folder, target] of Object.entries(options.folders || SYNC_MAP)) {
       try {
         const entries = await inventory(join(brain, folder));
         if (!entries.length) throw new Error("folder is empty or unavailable; retained all existing sources");
-        for (const entry of entries) {
-          const logical = `${target}/${entry}`;
-          const content = await readFile(join(brain, folder, entry));
-          const sha256 = digest(content);
-          const currentPath = status.files[logical]?.path || logical;
-          let current: Buffer | null = null;
-          try { current = await readFile(join(raw, currentPath)); } catch (e: any) { if (e.code !== "ENOENT") throw e; }
-          if (current && digest(current) === sha256) continue;
-          const baselineExists = await stat(join(raw, logical)).then(() => true, e => { if (e.code === "ENOENT") return false; throw e; });
-          const destination = `snapshots/${stamp}-${sha256.slice(0, 12)}/${logical}`;
-          if (!options.preview) {
-            await mkdir(dirname(join(raw, destination)), { recursive: true });
-            await writeFile(join(raw, destination), content, { flag: "wx" });
-            status.files[logical] = { path: destination, sha256, capturedAt };
-          }
-          result.changes.push({ source: logical, destination, kind: current || baselineExists ? "revision" : "new", sha256 });
-        }
+        for (const entry of entries) await capture(join(brain, folder, entry), `${target}/${entry}`);
       } catch (e: any) { result.errors.push(`${folder}: ${e.message}`); }
+    }
+    const rootTarget = options.rootTarget === undefined ? ROOT_TARGET : options.rootTarget;
+    if (rootTarget) {
+      try {
+        const notes = (await readdir(brain, { withFileTypes: true }))
+          .filter(e => e.isFile() && !e.name.startsWith(".") && e.name.toLowerCase().endsWith(".md")).map(e => e.name).sort();
+        for (const name of notes) await capture(join(brain, name), `${rootTarget}/${name}`);
+      } catch (e: any) { result.errors.push(`vault root: ${e.message}`); }
     }
     result.synced = result.changes.map(c => `${c.source} (${c.kind})`);
     if (!options.preview) {

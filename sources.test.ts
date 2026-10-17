@@ -101,3 +101,19 @@ test('bookmark parsing reads distilled bold-title entries without changing exist
  expect(after[1].identifiers).toEqual(['2108675420426031455']);
  expect(after[2].url).toBe('https://x.com/IterIntellectus/status/2108956765153075200');
 });
+
+test('capture includes Markdown notes at the vault root under root/', async()=>{
+ const root=await mkdtemp(join(tmpdir(),'wiki-root-capture-'));
+ try {
+  const brain=join(root,'brain'),raw=join(root,'raw');
+  await mkdir(join(brain,'misc'),{recursive:true});
+  await writeFile(join(brain,'misc','Note.md'),'# Note');
+  await writeFile(join(brain,'BRIEF.md'),'# Brief playbook');
+  await writeFile(join(brain,'.DS_Store'),'x'); await writeFile(join(brain,'image.png'),'x');
+  const result=await sync({brainPath:brain,rawDir:raw,folders:{misc:'misc'}});
+  expect(result.errors).toEqual([]);
+  expect(result.changes.map(c=>c.source).sort()).toEqual(['misc/Note.md','root/BRIEF.md']);
+  expect((await sync({brainPath:brain,rawDir:raw,folders:{misc:'misc'}})).changes).toEqual([]);
+  expect((await sync({brainPath:brain,rawDir:raw,folders:{misc:'misc'},rootTarget:false,preview:true})).changes).toEqual([]);
+ } finally {await rm(root,{recursive:true,force:true});}
+});

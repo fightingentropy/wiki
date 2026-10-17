@@ -44,8 +44,8 @@ Obsidian vault  ──①sync──▶  raw/  ──②ingest──▶  wiki/  �
 (source of truth)         (immutable versions)            (LLM pages)   (Bun + fs.watch)
 ```
 
-1. **Capture** (`sync.ts`, `POST /api/sync`): read the vault, including the curated
-   `bookmarks/` collection. New files and changes are saved under
+1. **Capture** (`sync.ts`, `POST /api/sync`): read the vault folders, including the curated
+   `bookmarks/` collection, plus Markdown notes at the vault root (stored under `root/`). New files and changes are saved under
    `raw/snapshots/<timestamp>-<hash>/<original-path>`. Existing captures are never
    overwritten or deleted, including when a source disappears upstream. Empty or
    missing folders are reported. `GET /api/sync/preview` shows changes without

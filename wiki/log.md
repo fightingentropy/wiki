@@ -274,3 +274,11 @@ The source index also records the 11 October review (142 bookmarks, 29 entries f
 The bookmark catalog now also reads the bold-title entry format these notes use, so all 35 appear as individual records in Bookmarks without changing any existing record's ID.
 
 Validation: all 91 new URLs are on their home pages; `bun run check` reports 98 pages, zero broken references and no pages over the limits; 47 tests pass; nothing pending ingest.
+
+---
+
+## [2026-10-17] ingest | market brief playbook from the vault root
+
+Capture now also takes Markdown notes kept directly in the vault root, stored under `raw/root/`; until now it only read the five subfolders. Captured `BRIEF.md`, the current market-brief playbook, and rewrote [[Markets - Brief]] around it: the update, brief and full-brief modes; the eight-section core brief; source order, the two-signal rule for actionable alpha and confidence tags; the fast news feeds; and the eight optional research modules. The playbook replaces the older seven-section template, which stays linked as the original. All eight playbook links are on the page.
+
+Validation: `bun run check` passes with 98 pages; 48 tests pass; nothing pending ingest.

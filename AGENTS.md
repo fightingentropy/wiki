@@ -9,6 +9,7 @@ raw/                   # Immutable source documents. LLM reads, never modifies.
   misc/                # Personal notes, bookmarks, takes, observations
   markets/             # Trading, macro, crypto, finance
   electrics/           # Electrical safety, building regs, study notes
+  root/                # Notes kept at the vault root, such as BRIEF.md
   clippings/           # Web clips and dated research notes
   snapshots/           # Immutable dated revisions captured from the vault
   assets/              # Images referenced by sources
